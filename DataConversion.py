@@ -8,7 +8,7 @@ import ipaddress
 #Convert the epoch time to just hours and minutes
 def toTime(epoch):
     try:
-        return time.strftime("%H%M", time.localtime(int(epoch)))
+        return time.strftime("%H%M%S", time.localtime(int(epoch)))
     except:
         return epoch
 

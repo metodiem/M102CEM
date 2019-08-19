@@ -1,7 +1,7 @@
 from __future__ import absolute_import, division, print_function
 import certifi
 import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2' #Remove the warning
 import csv
 import os
 import matplotlib.pyplot as plt
@@ -12,30 +12,15 @@ import tensorflow as tf
 certifi.where()
 tf.enable_eager_execution()
 
-#print("TensorFlow version: {}".format(tf.__version__))
 
-train_dataset_url1 = "D:\\University\\Master\\M102CEM - Project\\Code\\Converted.csv"
+train_dataset_url = "D:\\University\\Master\\M102CEM - Project\\Code\\Converted.csv"
 
-#dataset = np.loadtxt(path, delimiter=',', dtype=np.int32) #numpy loading of a csv file
 
-#train_input_fn = tf.estimator.inputs.numpy_input_fn(
-#    x={"x": np.array(training_set.data)},
-#    y=np.array(training_set.target),
-#    num_epochs=None,
-#    shuffle=True)
-
-train_dataset_url = "https://www.dropbox.com/s/4s16ehrnfohjz5s/TestData.csv"
-#train_dataset_url = "https://iotanalytics.unsw.edu.au/iottestbed/csv/16-09-23.csv.zip"
-#train_dataset_url = "https://storage.googleapis.com/download.tensorflow.org/data/iris_training.csv"
-column_names = ['time', 'size', 'eth.src', 'eth.dst', 'ip.src', 'ip.dst', 'ip.proto', 'port.src', 'port.dst', 'device']
-#column_names = ['time', 'size','device']
-print("pesssssss")
-#dataset = tf.keras.utils.get_dataset(train_dataset_url, column_names)
+#train_dataset_url = "https://www.dropbox.com/s/4s16ehrnfohjz5s/TestData.csv"
+column_names = ['time','size', 'ip.proto', 'port.src', 'port.dst', 'device']
 #dataset = tf.keras.utils.get_file(fname=os.path.basename(train_dataset_url), origin=train_dataset_url, extract=True)
 #record_defaults = [tf.int32] * 3   # Eight required float columns
-#dataset = tf.data.experimental.CsvDataset(path, record_defaults)
 
-#print(dataset)
 
 
 
@@ -46,11 +31,10 @@ print("Features: {}".format(features_names))
 print("Label: {}".format(label_name))
 
 batch_size = 32
-#print(dataset)
-#print(type(dataset))
 
-train_dataset = tf.contrib.data.make_csv_dataset(
-    train_dataset_url1,
+#Create a tensor dataset
+train_dataset = tf.contrib.data.make_csv_dataset( 
+    train_dataset_url,
     batch_size,
     column_names = column_names,
     label_name = label_name,
@@ -79,11 +63,14 @@ def pack_features_vector(features, labels):
 train_dataset = train_dataset.map(pack_features_vector)
 features, labels = next(iter(train_dataset))
 
-print(features[:5])
-
+"""
+Create a neural network with an input layer that consists of 5 neurons,
+two hidden layers with 12 neurons each and
+an output layer with 31 neurons which is the total number of devices we have on the network
+"""
 model = tf.keras.Sequential([
-  tf.keras.layers.Dense(100, activation=tf.nn.relu, input_shape=(9,)),  # input shape required
-  tf.keras.layers.Dense(100, activation=tf.nn.relu),
+  tf.keras.layers.Dense(12, activation=tf.nn.relu, input_shape=(5,)),  
+  tf.keras.layers.Dense(12, activation=tf.nn.relu),
   tf.keras.layers.Dense(31)
 ])
 
@@ -94,3 +81,66 @@ tf.nn.softmax(predictions[:5])
 
 print("Prediction: {}".format(tf.argmax(predictions, axis=1)))
 print("    Labels: {}".format(labels))
+
+def loss(model, x, y):
+  y_ = model(x)
+  return tf.losses.sparse_softmax_cross_entropy(labels=y, logits=y_)
+
+
+l = loss(model, features, labels)
+print("Loss test: {}".format(l))
+
+def grad(model, inputs, targets):
+  with tf.GradientTape() as tape:
+    loss_value = loss(model, inputs, targets)
+  return loss_value, tape.gradient(loss_value, model.trainable_variables)
+
+optimizer = tf.train.GradientDescentOptimizer(learning_rate=1)
+
+global_step = tf.Variable(0)
+
+loss_value, grads = grad(model, features, labels)
+
+print("Step: {}, Initial Loss: {}".format(global_step.numpy(),
+                                          loss_value.numpy()))
+
+optimizer.apply_gradients(zip(grads, model.trainable_variables), global_step)
+
+print("Step: {},         Loss: {}".format(global_step.numpy(),
+                                          loss(model, features, labels).numpy()))
+
+## Note: Rerunning this cell uses the same model variables
+
+from tensorflow import contrib
+tfe = contrib.eager
+
+# keep results for plotting
+train_loss_results = []
+train_accuracy_results = []
+
+num_epochs = 201
+
+for epoch in range(num_epochs):
+  epoch_loss_avg = tfe.metrics.Mean()
+  epoch_accuracy = tfe.metrics.Accuracy()
+
+  # Training loop - using batches of 32
+  for x, y in train_dataset:
+    # Optimize the model
+    loss_value, grads = grad(model, x, y)
+    optimizer.apply_gradients(zip(grads, model.trainable_variables),
+                              global_step)
+
+    # Track progress
+    epoch_loss_avg(loss_value)  # add current batch loss
+    # compare predicted label to actual label
+    epoch_accuracy(tf.argmax(model(x), axis=1, output_type=tf.int32), y)
+
+  # end epoch
+  train_loss_results.append(epoch_loss_avg.result())
+  train_accuracy_results.append(epoch_accuracy.result())
+
+  if epoch % 10 == 0:
+    print("Epoch {:03d}: Loss: {:.3f}, Accuracy: {:.3%}".format(epoch,
+                                                                epoch_loss_avg.result(),
+                                                                epoch_accuracy.result()))

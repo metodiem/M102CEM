@@ -144,3 +144,14 @@ for epoch in range(num_epochs):
     print("Epoch {:03d}: Loss: {:.3f}, Accuracy: {:.3%}".format(epoch,
                                                                 epoch_loss_avg.result(),
                                                                 epoch_accuracy.result()))
+#Random traffic from the list
+predict_dataset = tf.convert_to_tensor([
+    [150004, 66, 6, 37802, 1935,],
+])
+
+predictions = model(predict_dataset)
+#Make a prediction
+for i, logits in enumerate(predictions):
+  class_idx = tf.argmax(logits).numpy()
+  p = tf.nn.softmax(logits)[class_idx] 
+  print(i, 100*p)
